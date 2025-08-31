@@ -1,0 +1,12 @@
+TripID,Date,VehicleID,DriverID,StartLocation,EndLocation,Distance_km,Revenue,Expense
+1,2025-08-01,V001,D001,Airport,Hotel A,15,500,200
+2,2025-08-01,V002,D002,Station,Mall,10,300,120
+3,2025-08-02,V001,D003,Hotel A,Airport,14,480,190
+4,2025-08-02,V003,D004,Mall,Temple,8,250,100
+5,2025-08-03,V002,D002,Station,Beach,20,700,250
+6,2025-08-03,V001,D001,Hotel A,Beach,18,650,220
+7,2025-08-04,V003,D004,Temple,Airport,25,900,350
+8,2025-08-04,V004,D005,Office,Mall,12,400,150
+9,2025-08-05,V004,D005,Mall,Station,11,360,140
+10,2025-08-05,V002,D002,Airport,Hotel A,14,520,200
+

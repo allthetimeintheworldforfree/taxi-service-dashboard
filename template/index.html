@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PREDICO - Be your own doctor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #1a1a1a;
+            background-image: radial-gradient(at 10% 20%, #2c2c2c 0%, #1a1a1a 100%);
+            min-height: 100vh;
+        }
+        .chat-container {
+            height: 60vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .message {
+            max-width: 80%;
+            padding: 0.75rem 1rem;
+            border-radius: 1.25rem;
+            margin-bottom: 0.5rem;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #3b82f6;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.25rem;
+        }
+        .bot-message {
+            background-color: #4b5563;
+            color: #d1d5db;
+            align-self: flex-start;
+            border-bottom-left-radius: 0.25rem;
+        }
+        .loader {
+            border: 4px solid #4a4a4a;
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4 md:p-8">
+
+    <!-- Main Container -->
+    <div class="w-full max-w-4xl bg-gray-900 shadow-2xl rounded-3xl p-6 md:p-10 my-8 border border-gray-700">
+
+        <!-- Navbar -->
+        <nav class="w-full bg-gray-900 flex justify-between items-center mb-6">
+            <div class="flex items-center space-x-2">
+                <h1 class="text-2xl font-extrabold text-white">PREDICO</h1>
+                <span class="text-gray-400 text-sm">Be your own doctor</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="#" class="text-gray-300 hover:text-white transition" onclick="setPage('home')">Home</a>
+                <a href="#" class="text-gray-300 hover:text-white transition" onclick="setPage('about')">About</a>
+                <a href="#" class="text-gray-300 hover:text-white transition" onclick="setPage('contact')">Contact</a>
+                <span id="user-role-display" class="text-green-400"></span>
+                <button id="logout-btn" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition" onclick="signOut()">Log out</button>
+            </div>
+        </nav>
+
+        <!-- Dynamic Content Area -->
+        <div id="content-area">
+            <!-- Content will be rendered here by JavaScript -->
+        </div>
+
+    </div>
+
+    <script>
+        // Global State Management
+        let currentUser = null;
+        let userRole = null;
+        let currentPage = 'home';
+        let patientInfo = {};
+        let consultation = null;
+        let chatHistory = [];
+        let symptomSuggestions = [];
+        let selectedSymptoms = [];
+        let predictionResult = null;
+
+        // Backend API URL. Set explicitly to the Flask server's address.
+        const API_BASE_URL = 'http://127.0.0.1:5000';
+
+        // --- Core Functions ---
+        async function fetchSymptomSuggestions() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/symptoms`);
+                const data = await response.json();
+                symptomSuggestions = data.symptoms;
+            } catch (error) {
+                console.error("Failed to fetch symptoms:", error);
+                symptomSuggestions = []; // Fallback to empty list
+            }
+        }
+        fetchSymptomSuggestions();
+
+        function setPage(pageName) {
+            currentPage = pageName;
+            renderPage();
+        }
+
+        function renderPage() {
+            const contentArea = document.getElementById('content-area');
+            contentArea.innerHTML = '';
+            let pageContent = '';
+
+            switch(currentPage) {
+                case 'home':
+                    pageContent = renderHomePage();
+                    break;
+                case 'patientProfile':
+                    pageContent = renderPatientProfile();
+                    break;
+                case 'checkDisease':
+                    pageContent = renderCheckDiseaseUI();
+                    break;
+                case 'predictions':
+                    pageContent = renderPredictionsUI();
+                    break;
+                case 'consultation':
+                    pageContent = renderConsultationUI();
+                    break;
+                default:
+                    pageContent = `<div class="text-center text-gray-100 mt-20">Page Not Found</div>`;
+                    break;
+            }
+            contentArea.innerHTML = pageContent;
+            updateUI();
+        }
+
+        // --- Authentication & UI Updates ---
+        function showSignInModal() {
+             const modal = document.createElement('div');
+             modal.id = 'sign-in-modal';
+             modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-20';
+             modal.innerHTML = `
+                <div class="bg-gray-900 p-6 rounded-lg shadow-xl w-full max-w-md text-center text-gray-100 border border-gray-700">
+                    <h2 class="text-2xl font-bold mb-6">Sign-In As</h2>
+                    <div class="flex flex-col sm:flex-row justify-around space-y-4 sm:space-y-0 sm:space-x-4">
+                        <button onclick="signIn('admin_id_789')" class="flex-1 flex flex-col items-center p-4 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+                            <img src="https://placehold.co/100x100/1f2937/d1d5db?text=Admin" alt="Admin" class="w-24 h-24 rounded-full mb-3" />
+                            <span class="font-semibold">Admin</span>
+                        </button>
+                        <button onclick="signIn('doctor_id_456')" class="flex-1 flex flex-col items-center p-4 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+                            <img src="https://placehold.co/100x100/1f2937/d1d5db?text=Doctor" alt="Doctor" class="w-24 h-24 rounded-full mb-3" />
+                            <span class="font-semibold">Doctor</span>
+                        </button>
+                        <button onclick="signIn('patient_id_123')" class="flex-1 flex flex-col items-center p-4 bg-gray-800 rounded-lg hover:bg-gray-700 transition">
+                            <img src="https://placehold.co/100x100/1f2937/d1d5db?text=Patient" alt="Patient" class="w-24 h-24 rounded-full mb-3" />
+                            <span class="font-semibold">Patient</span>
+                        </button>
+                    </div>
+                    <button onclick="document.getElementById('sign-in-modal').remove()" class="mt-6 text-gray-500 hover:text-gray-300">Close</button>
+                </div>
+             `;
+             document.body.appendChild(modal);
+        }
+
+        async function signIn(userId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/signin`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId: userId })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    currentUser = { id: userId, ...data.user };
+                    userRole = data.user.role;
+                    patientInfo = data.user;
+                    document.getElementById('sign-in-modal').remove();
+                    setPage('patientProfile');
+                } else {
+                    alert(data.message);
+                }
+            } catch (error) {
+                console.error("Sign-in failed:", error);
+                alert("Failed to sign in. Please check the backend server.");
+            }
+        }
+        
+        function signOut() {
+            currentUser = null;
+            userRole = null;
+            patientInfo = {};
+            setPage('home');
+        }
+
+        function updateUI() {
+            const userRoleDisplay = document.getElementById('user-role-display');
+            const logoutBtn = document.getElementById('logout-btn');
+
+            if (userRole) {
+                userRoleDisplay.textContent = `Hello, ${patientInfo.name}`;
+                logoutBtn.style.display = 'block';
+            } else {
+                userRoleDisplay.textContent = '';
+                logoutBtn.style.display = 'none';
+            }
+        }
+        
+        // --- Page Content Rendering Functions ---
+        function renderHomePage() {
+            return `
+                <div class="text-center text-gray-100 mt-10 md:mt-20">
+                    <h2 class="text-4xl font-bold mb-4">Be your own doctor</h2>
+                    <p class="text-gray-400 max-w-lg mx-auto">
+                        The Disease Prediction system is an end-user support system designed to help people get an idea of their disease related issues. It uses machine learning techniques to guess the most accurate illness.
+                    </p>
+                    <button class="mt-8 bg-blue-600 text-white px-8 py-3 rounded-md font-semibold hover:bg-blue-700 transition" onclick="showSignInModal()">Get Started</button>
+                </div>
+            `;
+        }
+
+        function renderPatientProfile() {
+            return `
+                <div class="flex flex-col items-center bg-gray-900 p-8 rounded-xl shadow-lg border border-gray-700 text-gray-100">
+                    <img src="https://placehold.co/150x150/d1d5db/4b5563?text=Patient" alt="Patient" class="rounded-full w-32 h-32 mb-6"/>
+                    <h2 class="text-2xl font-bold">Patient Profile</h2>
+                    <div class="mt-4 text-center">
+                        <p class="text-gray-300"><span class="font-semibold">Patient name:</span> ${patientInfo.name}</p>
+                        <p class="text-gray-300"><span class="font-semibold">Patient ID:</span> ${patientInfo.id}</p>
+                        <p class="text-gray-300"><span class="font-semibold">Patient email:</span> ${patientInfo.email}</p>
+                    </div>
+                    <div class="mt-8 space-y-4 w-full max-w-sm">
+                        <button onclick="setPage('checkDisease')" class="w-full bg-blue-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-blue-700 transition">Check Disease</button>
+                        <button class="w-full bg-gray-700 text-gray-200 px-6 py-3 rounded-md font-semibold hover:bg-gray-600 transition">View Consultation History</button>
+                        <button class="w-full bg-gray-700 text-gray-200 px-6 py-3 rounded-md font-semibold hover:bg-gray-600 transition">Give Feedbacks</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderCheckDiseaseUI() {
+            const selectedSymptomsHtml = selectedSymptoms.map(s => `
+                <span class="flex items-center bg-gray-700 text-white text-xs px-3 py-1 rounded-full">
+                    ${s.replace(/_/g, ' ')}
+                    <button onclick="removeSymptom('${s}')" class="ml-2 text-red-400 hover:text-red-600">×</button>
+                </span>
+            `).join('');
+
+            const suggestionsHtml = symptomSuggestions.map(s => `
+                <button class="px-3 py-1 bg-gray-700 rounded-full text-sm text-gray-300 hover:bg-gray-600 transition" onclick="addSymptom('${s}')">
+                    ${s.replace(/_/g, ' ')}
+                </button>
+            `).join('');
+
+            return `
+                <div class="flex flex-col items-center bg-gray-900 p-8 rounded-xl shadow-lg border border-gray-700 w-full max-w-xl text-gray-100">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Identify possible conditions and treatment related to your symptoms.</h2>
+                    <div class="w-full">
+                        <div class="relative">
+                            <input
+                                type="text"
+                                id="symptom-search-input"
+                                placeholder="Type symptoms here..."
+                                oninput="handleSymptomSearch(this.value)"
+                                class="w-full p-3 pl-4 rounded-lg bg-gray-800 text-white border border-gray-700 focus:ring-2 focus:ring-blue-500 transition"
+                            />
+                        </div>
+                        <div id="symptom-suggestions" class="mt-4 flex flex-wrap gap-2">
+                           ${suggestionsHtml}
+                        </div>
+                        <div class="mt-4 p-4 bg-gray-800 border border-gray-700 rounded-lg">
+                            <h3 class="text-gray-400 text-sm mb-2">Symptoms list:</h3>
+                            <div class="flex flex-wrap gap-2">
+                                ${selectedSymptomsHtml.length > 0 ? selectedSymptomsHtml : `<span class="text-gray-500 italic text-sm">No symptoms selected</span>`}
+                            </div>
+                        </div>
+                        <button onclick="handlePrediction()" class="w-full mt-6 bg-green-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-green-700 transition">Predict</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function renderPredictionsUI() {
+            const result = predictionResult?.prediction || {};
+            if (!result) return `<button class="w-full mt-6 bg-red-600 text-white px-6 py-3 rounded-md" onclick="setPage('checkDisease')">Go Back</button>`;
+            
+            return `
+                <div class="flex flex-col items-center bg-gray-900 p-8 rounded-xl shadow-lg border border-gray-700 w-full max-w-lg text-gray-100">
+                    <h2 class="text-2xl font-bold mb-6">Predictions</h2>
+                    <div class="w-full p-6 bg-gray-800 rounded-lg border border-blue-600 text-center">
+                        <p class="text-gray-300"><span class="font-semibold">Patient name:</span> ${patientInfo.name}</p>
+                        <p class="text-gray-300"><span class="font-semibold">Patient age:</span> ${patientInfo.age}</p>
+                        <p class="text-gray-300"><span class="font-semibold">Predicted disease is:</span> <span class="text-lg text-blue-400">${result.disease}</span></p>
+                        <div class="mt-4 flex flex-col items-center">
+                            <p class="text-gray-300">Confidence score of: <span class="font-semibold">${Math.round(result.confidence * 100)}%</span></p>
+                            <div class="w-48 bg-gray-700 rounded-full h-2.5 mt-2">
+                                <div class="bg-green-500 h-2.5 rounded-full transition-all duration-500" style="width: ${result.confidence * 100}%"></div>
+                            </div>
+                        </div>
+                        <button onclick="startConsultation()" class="mt-4 bg-red-600 text-white px-6 py-3 rounded-md font-semibold hover:bg-red-700 transition">Consult a ${result.doctor}</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderConsultationUI() {
+            const lastPrediction = predictionResult?.prediction || {};
+            const consultationMessages = chatHistory.map(msg => `
+                <div class="flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}">
+                    <div class="message px-4 py-2 rounded-xl text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-600 text-gray-200'}">
+                        <p>${msg.text}</p>
+                    </div>
+                </div>
+            `).join('');
+
+            return `
+                <div class="flex flex-col md:flex-row w-full max-w-4xl bg-gray-900 rounded-xl shadow-lg border border-gray-700 p-6 space-y-6 md:space-y-0 md:space-x-6 text-gray-100">
+                    <div class="w-full md:w-1/3 p-4 bg-gray-800 rounded-lg border border-gray-700">
+                        <h3 class="text-lg font-bold">Predicted disease : <span class="text-blue-400">${lastPrediction.disease || 'N/A'}</span></h3>
+                        <p class="mt-2 text-gray-400">List of symptoms -</p>
+                        <ul class="list-disc list-inside text-gray-300 text-sm">
+                            ${selectedSymptoms.map(s => `<li>${s.replace(/_/g, ' ')}</li>`).join('')}
+                        </ul>
+                        <p class="mt-4 text-gray-400"><span class="font-semibold">Confident score :</span> <span class="text-green-400">${lastPrediction.confidence ? (lastPrediction.confidence * 100).toFixed(2) : 'N/A'}%</span></p>
+                        <p class="text-gray-400"><span class="font-semibold">Patient name :</span> ${patientInfo.name}</p>
+                        <p class="text-gray-400"><span class="font-semibold">Patient age :</span> ${patientInfo.age}</p>
+                        <p class="text-gray-400"><span class="font-semibold">Consultation status :</span> <span class="text-green-400">active</span></p>
+                        <button onclick="setPage('patientProfile')" class="w-full mt-6 bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition">Close Consultation</button>
+                    </div>
+                    <div class="w-full md:w-2/3 flex flex-col bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div class="p-4 bg-gray-700 text-gray-100 font-bold flex justify-between items-center">
+                            Chat Box
+                        </div>
+                        <div id="chat-history" class="flex-grow p-4 space-y-4 overflow-y-auto">
+                            ${consultationMessages}
+                        </div>
+                        <div class="p-4 bg-gray-700 flex space-x-2">
+                            <input type="text" id="chat-input" placeholder="Type a message..." class="flex-grow p-2 rounded-md bg-gray-600 text-white border-gray-500 focus:outline-none" />
+                            <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Send</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // --- Event Handlers & Simulated Logic ---
+        function handleSymptomSearch(inputValue) {
+            const suggestionsDiv = document.getElementById('symptom-suggestions');
+            if (suggestionsDiv) {
+                let filteredSuggestions = symptomSuggestions;
+                if (inputValue.length > 0) {
+                    filteredSuggestions = symptomSuggestions.filter(s => s.includes(inputValue.toLowerCase()));
+                }
+                
+                suggestionsDiv.innerHTML = filteredSuggestions.map(s => `
+                    <button class="px-3 py-1 bg-gray-700 rounded-full text-sm text-gray-300 hover:bg-gray-600 transition" onclick="addSymptom('${s}')">
+                        ${s.replace(/_/g, ' ')}
+                    </button>
+                `).join('');
+            }
+        }
+        
+        function addSymptom(symptom) {
+            if (!selectedSymptoms.includes(symptom)) {
+                selectedSymptoms.push(symptom);
+                renderPage();
+            }
+        }
+        
+        function removeSymptom(symptom) {
+            selectedSymptoms = selectedSymptoms.filter(s => s !== symptom);
+            renderPage();
+        }
+
+        async function handlePrediction() {
+            if (selectedSymptoms.length === 0) {
+                alert("Please select at least one symptom.");
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE_URL}/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ symptoms: selectedSymptoms })
+                });
+                const data = await response.json();
+                predictionResult = data;
+                setPage('predictions');
+            } catch (error) {
+                console.error("Prediction failed:", error);
+                alert("Prediction failed. Please check the backend server.");
+            }
+        }
+        
+        function startConsultation() {
+            setPage('consultation');
+        }
+
+        async function sendMessage() {
+            const chatInput = document.getElementById('chat-input');
+            const userMessage = chatInput.value.trim();
+            if (!userMessage) return;
+            
+            // Add user message to local history
+            chatHistory.push({ role: 'user', text: userMessage });
+            chatInput.value = '';
+            renderPage(); 
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: userMessage, history: chatHistory })
+                });
+                const data = await response.json();
+                chatHistory.push({ role: 'bot', text: data.response });
+                renderPage(); 
+            } catch (error) {
+                console.error("Chat message failed:", error);
+                chatHistory.push({ role: 'bot', text: "Sorry, I can't respond right now." });
+                renderPage();
+            }
+        }
+
+        // Initial render
+        document.addEventListener('DOMContentLoaded', () => {
+            renderPage();
+            
+            // Add event listener for the symptom search input after the page is rendered
+            document.addEventListener('input', (e) => {
+                if (e.target.id === 'symptom-search-input') {
+                    handleSymptomSearch(e.target.value);
+                }
+            });
+
+            // Add event listener for the chat input after the page is rendered
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.target.id === 'chat-input') {
+                    sendMessage();
+                }
+            });
+        });
+    </script>
+</body>
+</html>
